@@ -106,115 +106,166 @@ class Window(WindowEvents):
         if self.show_axis:
             self.axis.render(self.camera)
 
-        curr_frame = self.states.get_frame()
-        h, w = curr_frame.img_shape.flatten()
-        self.frustums.make_frustum(h, w)
-
-        self.curr_img_np = curr_frame.uimg.numpy()
-        self.curr_img.write(self.curr_img_np)
-
-        cam_T_WC = as_SE3(curr_frame.T_WC).cpu()
-        if self.follow_cam:
-            T_WC = cam_T_WC.matrix().numpy().astype(
-                dtype=np.float32
-            ) @ translation_matrix(np.array([0, 0, -2], dtype=np.float32))
-            self.camera.follow_cam(np.linalg.inv(T_WC))
-        else:
-            self.camera.unfollow_cam()
-        self.frustums.add(
-            cam_T_WC,
-            scale=self.frustum_scale,
-            color=[0, 1, 0, 1],
-            thickness=self.line_thickness * self.scale,
-        )
-
-        with self.keyframes.lock:
-            N_keyframes = len(self.keyframes)
-            dirty_idx = self.keyframes.get_dirty_idx()
-
-        for kf_idx in dirty_idx:
-            keyframe = self.keyframes[kf_idx]
-            h, w = keyframe.img_shape.flatten()
-            X = self.frame_X(keyframe)
-            C = keyframe.get_average_conf().cpu().numpy().astype(np.float32)
-
-            if keyframe.frame_id not in self.textures:
-                ptex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
-                ctex = self.ctx.texture((w, h), 1, dtype="f4", alignment=4)
-                itex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
-                self.textures[keyframe.frame_id] = ptex, ctex, itex
-                ptex, ctex, itex = self.textures[keyframe.frame_id]
-                itex.write(keyframe.uimg.numpy().astype(np.float32).tobytes())
-
-            ptex, ctex, itex = self.textures[keyframe.frame_id]
-            ptex.write(X.tobytes())
-            ctex.write(C.tobytes())
-
-        for kf_idx in range(N_keyframes):
-            keyframe = self.keyframes[kf_idx]
-            h, w = keyframe.img_shape.flatten()
-            if kf_idx == N_keyframes - 1:
-                self.kf_img_np = keyframe.uimg.numpy()
-                self.kf_img.write(self.kf_img_np)
-
-            color = [1, 0, 0, 1]
-            if self.show_keyframe:
-                self.frustums.add(
-                    as_SE3(keyframe.T_WC.cpu()),
-                    scale=self.frustum_scale,
-                    color=color,
-                    thickness=self.line_thickness * self.scale,
-                )
-
-            ptex, ctex, itex = self.textures[keyframe.frame_id]
-            if self.show_all:
-                self.render_pointmap(keyframe.T_WC.cpu(), w, h, ptex, ctex, itex)
-
-        if self.show_keyframe_edges:
-            with self.states.lock:
-                ii = torch.tensor(self.states.edges_ii, dtype=torch.long)
-                jj = torch.tensor(self.states.edges_jj, dtype=torch.long)
-                if ii.numel() > 0 and jj.numel() > 0:
-                    T_WCi = lietorch.Sim3(self.keyframes.T_WC[ii, 0])
-                    T_WCj = lietorch.Sim3(self.keyframes.T_WC[jj, 0])
-            if ii.numel() > 0 and jj.numel() > 0:
-                t_WCi = T_WCi.matrix()[:, :3, 3].cpu().numpy()
-                t_WCj = T_WCj.matrix()[:, :3, 3].cpu().numpy()
-                self.lines.add(
-                    t_WCi,
-                    t_WCj,
-                    thickness=self.line_thickness * self.scale,
-                    color=[0, 1, 0, 1],
-                )
-        if self.show_curr_pointmap and self.states.get_mode() != Mode.INIT:
-            if config["use_calib"]:
-                curr_frame.K = self.keyframes.get_intrinsics()
+        try:
+            curr_frame = self.states.get_frame()
             h, w = curr_frame.img_shape.flatten()
-            X = self.frame_X(curr_frame)
-            C = curr_frame.C.cpu().numpy().astype(np.float32)
-            if "curr" not in self.textures:
-                ptex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
-                ctex = self.ctx.texture((w, h), 1, dtype="f4", alignment=4)
-                itex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
-                self.textures["curr"] = ptex, ctex, itex
-            ptex, ctex, itex = self.textures["curr"]
-            ptex.write(X.tobytes())
-            ctex.write(C.tobytes())
-            itex.write(depth2rgb(X[..., -1], colormap="turbo"))
-            self.render_pointmap(
-                curr_frame.T_WC.cpu(),
-                w,
-                h,
-                ptex,
-                ctex,
-                itex,
-                use_img=True,
-                depth_bias=self.depth_bias,
+            self.frustums.make_frustum(h, w)
+
+            self.curr_img_np = curr_frame.uimg.numpy()
+            self.curr_img.write(self.curr_img_np)
+
+            cam_T_WC = as_SE3(curr_frame.T_WC).cpu()
+            if self.follow_cam:
+                T_WC = cam_T_WC.matrix().numpy().astype(
+                    dtype=np.float32
+                ) @ translation_matrix(np.array([0, 0, -2], dtype=np.float32))
+                self.camera.follow_cam(np.linalg.inv(T_WC))
+            else:
+                self.camera.unfollow_cam()
+            self.frustums.add(
+                cam_T_WC,
+                scale=self.frustum_scale,
+                color=[0, 1, 0, 1],
+                thickness=self.line_thickness * self.scale,
             )
 
-        self.lines.render(self.camera)
-        self.frustums.render(self.camera)
-        self.render_ui()
+            # Use try-except blocks to handle potential issues with keyframes
+            try:
+                with self.keyframes.lock:
+                    N_keyframes = len(self.keyframes)
+                    dirty_idx = self.keyframes.get_dirty_idx()
+
+                # Handle dirty keyframes
+                for kf_idx in dirty_idx:
+                    if kf_idx >= N_keyframes:  # Safety check
+                        continue
+                    try:
+                        keyframe = self.keyframes[kf_idx]
+                        h, w = keyframe.img_shape.flatten()
+                        X = self.frame_X(keyframe)
+                        C = keyframe.get_average_conf().cpu().numpy().astype(np.float32)
+
+                        if keyframe.frame_id not in self.textures:
+                            ptex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
+                            ctex = self.ctx.texture((w, h), 1, dtype="f4", alignment=4)
+                            itex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
+                            self.textures[keyframe.frame_id] = ptex, ctex, itex
+                            itex.write(keyframe.uimg.numpy().astype(np.float32).tobytes())
+
+                        ptex, ctex, itex = self.textures[keyframe.frame_id]
+                        ptex.write(X.tobytes())
+                        ctex.write(C.tobytes())
+                    except (IndexError, AttributeError, ValueError) as e:
+                        print(f"Error processing dirty keyframe {kf_idx}: {e}")
+                        continue
+
+                # Process all keyframes
+                for kf_idx in range(N_keyframes):
+                    try:
+                        keyframe = self.keyframes[kf_idx]
+                        h, w = keyframe.img_shape.flatten()
+                        if kf_idx == N_keyframes - 1:
+                            self.kf_img_np = keyframe.uimg.numpy()
+                            self.kf_img.write(self.kf_img_np)
+
+                        color = [1, 0, 0, 1]
+                        if self.show_keyframe:
+                            self.frustums.add(
+                                as_SE3(keyframe.T_WC.cpu()),
+                                scale=self.frustum_scale,
+                                color=color,
+                                thickness=self.line_thickness * self.scale,
+                            )
+
+                        # Check if textures exist for this keyframe, create them if not
+                        if keyframe.frame_id not in self.textures:
+                            ptex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
+                            ctex = self.ctx.texture((w, h), 1, dtype="f4", alignment=4)
+                            itex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
+                            self.textures[keyframe.frame_id] = ptex, ctex, itex
+                            # Initialize with image data if available
+                            if hasattr(keyframe, 'uimg') and keyframe.uimg is not None:
+                                itex.write(keyframe.uimg.numpy().astype(np.float32).tobytes())
+                            # Initialize point and confidence data if available
+                            X = self.frame_X(keyframe)
+                            C = keyframe.get_average_conf().cpu().numpy().astype(np.float32)
+                            ptex.write(X.tobytes())
+                            ctex.write(C.tobytes())
+                        
+                        ptex, ctex, itex = self.textures[keyframe.frame_id]
+                        if self.show_all:
+                            self.render_pointmap(keyframe.T_WC.cpu(), w, h, ptex, ctex, itex)
+                    except (IndexError, AttributeError, ValueError) as e:
+                        print(f"Error processing keyframe {kf_idx}: {e}")
+                        continue
+
+                # Handle keyframe edges
+                if self.show_keyframe_edges:
+                    try:
+                        with self.states.lock:
+                            ii = torch.tensor(self.states.edges_ii, dtype=torch.long)
+                            jj = torch.tensor(self.states.edges_jj, dtype=torch.long)
+                            if ii.numel() > 0 and jj.numel() > 0:
+                                # Check if indices are valid before accessing
+                                valid_mask = (ii < len(self.keyframes)) & (jj < len(self.keyframes))
+                                if valid_mask.any():
+                                    ii = ii[valid_mask]
+                                    jj = jj[valid_mask]
+                                    T_WCi = lietorch.Sim3(self.keyframes.T_WC[ii, 0])
+                                    T_WCj = lietorch.Sim3(self.keyframes.T_WC[jj, 0])
+                                    
+                                    t_WCi = T_WCi.matrix()[:, :3, 3].cpu().numpy()
+                                    t_WCj = T_WCj.matrix()[:, :3, 3].cpu().numpy()
+                                    self.lines.add(
+                                        t_WCi,
+                                        t_WCj,
+                                        thickness=self.line_thickness * self.scale,
+                                        color=[0, 1, 0, 1],
+                                    )
+                    except Exception as e:
+                        print(f"Error processing keyframe edges: {e}")
+
+                # Handle current pointmap
+                if self.show_curr_pointmap and self.states.get_mode() != Mode.INIT:
+                    try:
+                        if config["use_calib"]:
+                            curr_frame.K = self.keyframes.get_intrinsics()
+                        h, w = curr_frame.img_shape.flatten()
+                        X = self.frame_X(curr_frame)
+                        C = curr_frame.C.cpu().numpy().astype(np.float32)
+                        if "curr" not in self.textures:
+                            ptex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
+                            ctex = self.ctx.texture((w, h), 1, dtype="f4", alignment=4)
+                            itex = self.ctx.texture((w, h), 3, dtype="f4", alignment=4)
+                            self.textures["curr"] = ptex, ctex, itex
+                        ptex, ctex, itex = self.textures["curr"]
+                        ptex.write(X.tobytes())
+                        ctex.write(C.tobytes())
+                        itex.write(depth2rgb(X[..., -1], colormap="turbo"))
+                        self.render_pointmap(
+                            curr_frame.T_WC.cpu(),
+                            w,
+                            h,
+                            ptex,
+                            ctex,
+                            itex,
+                            use_img=True,
+                            depth_bias=self.depth_bias,
+                        )
+                    except Exception as e:
+                        print(f"Error processing current pointmap: {e}")
+            except Exception as e:
+                print(f"Error in keyframe processing: {e}")
+
+        except Exception as e:
+            print(f"Error in main render loop: {e}")
+
+        try:
+            self.lines.render(self.camera)
+            self.frustums.render(self.camera)
+            self.render_ui()
+        except Exception as e:
+            print(f"Error rendering UI: {e}")
 
     def render_ui(self):
         self.wnd.use()
