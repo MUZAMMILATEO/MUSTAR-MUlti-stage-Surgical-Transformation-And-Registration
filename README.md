@@ -1,4 +1,4 @@
-[comment]: <> (# MUSTAR: MUlti-Stage Surgical Transformation And Registration)
+# MUSTAR: MUlti-Stage Surgical Transformation And Registration
 
 This repository provides the MUSTAR framework designed for surgical environments. It integrates Structure-from-Motion (SfM), pose estimation, and registration techniques to align pre-operative and intra-operative data.
 
