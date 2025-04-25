@@ -55,6 +55,26 @@ git checkout windows
 ```
 This disables multiprocessing which causes an issue with shared memory as discussed [here](https://github.com/rmurai0610/MASt3R-SLAM/issues/21).
 
+## 🛠️ Additional Installations for WSL Users
+
+If you're running this project in a **WSL (Windows Subsystem for Linux)** environment, you need to install the following system dependencies to enable visualization and library support:
+
+```bash
+sudo apt install libglu1
+sudo apt install libxcursor-dev
+sudo apt install libxft2
+sudo apt install libxinerama1
+sudo apt install libfltk1.3-dev
+sudo apt install libfreetype6-dev
+sudo apt install libgl1-mesa-dev
+sudo apt install libocct-foundation-dev
+sudo apt install libocct-data-exchange-dev
+
+export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+```
+
+Run the following in your WSL terminal:
+
 ## Data Preparation
 
 ### 1. Pre-operative Point Cloud
