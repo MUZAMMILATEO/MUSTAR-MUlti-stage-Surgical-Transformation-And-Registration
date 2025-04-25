@@ -223,10 +223,5 @@ We sincerely thank the developers and contributors of the many open-source proje
 If you found this code/work to be useful in your own research, please considering citing the following:
 
 ```bibtex
-@article{murai2024_mast3rslam,
-    title={{MASt3R-SLAM}: Real-Time Dense {SLAM} with {3D} Reconstruction Priors},
-    author={Murai, Riku and Dexheimer, Eric and Davison, Andrew J.},
-    journal={arXiv preprint},
-    year={2024},
-}      
+      To be added
 ```
