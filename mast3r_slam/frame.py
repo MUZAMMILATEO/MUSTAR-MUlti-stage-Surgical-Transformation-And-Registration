@@ -5,6 +5,9 @@ import lietorch
 import torch
 from mast3r_slam.mast3r_utils import resize_img
 from mast3r_slam.config import config
+import torch.multiprocessing as mp
+import numpy as np
+import open3d as o3d
 
 
 class Mode(Enum):
@@ -325,3 +328,26 @@ class SharedKeyframes:
         assert config["use_calib"]
         with self.lock:
             return self.K
+            
+class SharedPointCloud:
+    def __init__(self, ply_file, device="cpu"):
+        # Initialize a lock in case you need to update or access concurrently.
+        self.lock = mp.Lock()
+        # Load the point cloud data from the ply file.
+        self.path_to_ply = ply_file
+        self.point_cloud = self.load_ply(ply_file)
+        # Optionally, you can move the data to a specific device or format it
+        self.device = device
+
+    def load_ply(self, file_path):
+        # Using Open3D to read the point cloud
+        pcd = o3d.io.read_point_cloud(file_path)
+        points = np.asarray(pcd.points)    # shape: (N, 3)
+        colors = np.asarray(pcd.colors)      # shape: (N, 3), values in [0, 1]
+        return {"points": points, "colors": colors}
+
+    def get_point_cloud(self):
+        # Return a copy of the point cloud data safely.
+        with self.lock:
+            # You might return a copy if you worry about the data being modified elsewhere.
+            return self.point_cloud.copy()
