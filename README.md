@@ -1,24 +1,7 @@
-[comment]: <> (# MASt3R-SLAM: Real-Time Dense SLAM with 3D Reconstruction Priors)
+[comment]: <> (# MUSTAR: MUlti-Stage Surgical Transformation And Registration)
 
-<p align="center">
-  <h1 align="center">MASt3R-SLAM: Real-Time Dense SLAM with 3D Reconstruction Priors</h1>
-  <p align="center">
-    <a href="https://rmurai.co.uk/"><strong>Riku Murai*</strong></a>
-    ·
-    <a href="https://edexheim.github.io/"><strong>Eric Dexheimer*</strong></a>
-    ·
-    <a href="https://www.doc.ic.ac.uk/~ajd/"><strong>Andrew J. Davison</strong></a>
-  </p>
-  <p align="center">(* Equal Contribution)</p>
+This repository provides the MUSTAR framework designed for surgical environments. It integrates Structure-from-Motion (SfM), pose estimation, and registration techniques to align pre-operative and intra-operative data.
 
-[comment]: <> (  <h2 align="center">PAPER</h2>)
-  <h3 align="center"><a href="https://arxiv.org/abs/2412.12392">Paper</a> | <a href="https://youtu.be/wozt71NBFTQ">Video</a> | <a href="https://edexheim.github.io/mast3r-slam/">Project Page</a></h3>
-  <div align="center"></div>
-
-<p align="center">
-    <img src="./media/teaser.gif" alt="teaser" width="100%">
-</p>
-<br>
 
 # Getting Started
 ## Installation
@@ -72,11 +55,63 @@ git checkout windows
 ```
 This disables multiprocessing which causes an issue with shared memory as discussed [here](https://github.com/rmurai0610/MASt3R-SLAM/issues/21).
 
-## Examples
+## Data Preparation
+
+### 1. Pre-operative Point Cloud
+
+Place the following pre-operative point clouds in the `./SfM-SLAM/pre_cloud/` directory:
+
+- `Kyoto_CT.ply` - Pre-operative point cloud focused on the region of interest for registration.
+- `Kyoto_CT_with_interior.ply` - Full pre-operative point cloud including the interior structures (such as vessels, lesions, etc.).
+
+### 2. Structure-from-Motion (SfM) Point Cloud
+
+Place the SfM-generated point cloud in the `./SfM-SLAM/sfm_pts/` directory as:
+
+- `points3D.ply` - The reconstructed point cloud generated from SfM such as InstantSplat.
+
+---
+
+## 3. Generate Image Sequence Metadata
+
+To generate a .txt file corresponding to your input image sequence:
 ```
-bash ./scripts/download_tum.sh
-python main.py --dataset datasets/tum/rgbd_dataset_freiburg1_room/ --config config/calib.yaml
+python ./extra_tools/txt_gen.py
 ```
+
+When prompted, provide the absolute path to your folder containing RGB images.
+
+## 4. Folder Structure Overview
+```
+MASt3R-SLAM/
+├── SfM-SLAM/
+│   ├── pre_cloud/
+│   │   ├── Kyoto_CT.ply
+│   │   └── Kyoto_CT_with_interior.ply
+│   └── sfm_pts/
+│       ├── points3D.ply
+│       └── keyframe0.ply (after running main.py)
+├── config/
+│   └── base.yaml
+├── datasets/
+│   └── tum/
+│       └── rgbd_dataset/
+└── extra_tools/
+    └── txt_gen.py
+```
+
+## 🚀 Running the SLAM Framework
+
+Run the main pipeline with the following command:
+
+```bash
+python main.py --dataset /path/to/your/rgbd_dataset/ --config config/base.yaml
+```
+
+**Note:** After successful execution, the first keyframe will be saved as keyframe0.ply in the ./SfM-SLAM/sfm_pts/ folder.
+
+
+
 ## Live Demo
 Connect a realsense camera to the PC and run
 ```
