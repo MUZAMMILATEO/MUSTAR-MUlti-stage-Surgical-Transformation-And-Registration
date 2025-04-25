@@ -83,7 +83,7 @@ pip install open3d==0.17.0
 pip install teaserpp_python
 ```
 
-📢 **Note:** If you have not yet cloned the TEASER++ repository separately, you can refer to it [**here**](https://gitlab.nki.nl/igs-clinical-navigation/slam/teaser-plusplus) for pre-intra-teaserpp branch compilation and advanced usage.
+📢 If you have not yet cloned the TEASER++ repository separately, you can refer to it [**here**](https://gitlab.nki.nl/igs-clinical-navigation/slam/teaser-plusplus) for pre-intra-teaserpp branch compilation and advanced usage.
 
 
 
