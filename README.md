@@ -73,6 +73,20 @@ sudo apt install libocct-data-exchange-dev
 export LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
 ```
 
+## 📦 Additional Requirements for TEASER++ Registration
+
+The MUSTAR framework uses TEASER++ for point cloud registration.  
+If you have completed the above installation and created the conda environment, you **only need to install two additional packages** to enable TEASER++ functionalities:
+
+```bash
+pip install open3d==0.17.0
+pip install teaserpp_python
+```
+
+📢 **Note:** If you have not yet cloned the TEASER++ repository separately, you can refer to it [**here**](https://gitlab.nki.nl/igs-clinical-navigation/slam/teaser-plusplus) for pre-intra-teaserpp branch compilation and advanced usage.
+
+
+
 Run the following in your WSL terminal:
 
 ## Data Preparation
