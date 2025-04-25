@@ -1,7 +1,11 @@
+import os
 import argparse
 import datetime
 import pathlib
+import open3d as o3d
 import sys
+sys.path.append('./TEASER-plusplus/examples/teaser_python_ply/')
+import numpy as np
 import time
 import cv2
 import lietorch
@@ -13,7 +17,7 @@ from mast3r_slam.global_opt import FactorGraph
 from mast3r_slam.config import load_config, config, set_global_config
 from mast3r_slam.dataloader import Intrinsics, load_dataset
 import mast3r_slam.evaluate as eval
-from mast3r_slam.frame import Mode, SharedKeyframes, SharedStates, create_frame
+from mast3r_slam.frame import Mode, SharedKeyframes, SharedStates, create_frame, SharedPointCloud
 from mast3r_slam.mast3r_utils import (
     load_mast3r,
     load_retriever,
@@ -21,9 +25,168 @@ from mast3r_slam.mast3r_utils import (
 )
 from mast3r_slam.multiprocess_utils import new_queue, try_get_msg
 from mast3r_slam.tracker import FrameTracker
-from mast3r_slam.visualization import WindowMsg, run_visualization
+from mast3r_slam.visualization_sfm_teaser_double import WindowMsg, run_visualization
 import torch.multiprocessing as mp
 
+from io import BytesIO
+from plyfile import PlyData, PlyElement
+from teaser_python_ply_rt_mixed import register_SfM_SLAM
+from teaser_pre_intra import pre_intra_reg, pre_intra_reg_refine
+
+from scipy.spatial import cKDTree
+
+def current_point_cloud(keyframes, c_conf_threshold):
+
+    keyframe = keyframes.last_keyframe()
+    if config["use_calib"]:
+        X_canon = constrain_points_to_ray(
+            keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K
+        )
+        keyframe.X_canon = X_canon.squeeze(0)
+    pW = keyframe.T_WC.act(keyframe.X_canon).cpu().numpy().reshape(-1, 3)
+    color = (keyframe.uimg.cpu().numpy() * 255).astype(np.uint8).reshape(-1, 3)
+    valid = (
+        keyframe.get_average_conf().cpu().numpy().astype(np.float32).reshape(-1)
+        > c_conf_threshold
+    )
+    npW = pW[valid]
+    ncolor = color[valid]
+    
+    return current_point_cloud_helper(npW, ncolor)
+    
+def current_point_cloud_helper(points, colors):
+    colors = colors.astype(np.uint8)
+    # Combine XYZ and RGB into a structured array
+    pcd = np.empty(
+        len(points),
+        dtype=[
+            ("x", "f4"),
+            ("y", "f4"),
+            ("z", "f4"),
+            ("red", "u1"),
+            ("green", "u1"),
+            ("blue", "u1"),
+        ],
+    )
+    pcd["x"], pcd["y"], pcd["z"] = points.T
+    pcd["red"], pcd["green"], pcd["blue"] = colors.T
+    vertex_element = PlyElement.describe(pcd, "vertex")
+    return PlyData([vertex_element], text=False)
+    
+
+def save_transformed_pre_cloud(static_pre_pcd, trans_pre_cloud, static_pre_pcd_with_interior, static_pre_pcd_with_interior_path):
+
+    # Save the transformed point cloud data to the file.
+    # Check if the point cloud contains color information
+    if not static_pre_pcd.has_colors():
+        print("Warning: The input file does not contain color information.")
+        # You can choose to continue (writing only points) or raise an error.
+    
+    # Create a new point cloud with just the points and colors (if available)
+    new_pre_pcd = o3d.geometry.PointCloud()
+    new_pre_pcd.points = static_pre_pcd.points
+    if static_pre_pcd.has_colors():
+        new_pre_pcd.colors = static_pre_pcd.colors
+
+    # Save the new point cloud to file
+    o3d.io.write_point_cloud(trans_pre_cloud, new_pre_pcd)
+    
+    if static_pre_pcd_with_interior is not None:
+        # Save the transformed point cloud data to the file.
+        # Check if the point cloud contains color information
+        if not static_pre_pcd_with_interior.has_colors():
+            print("Warning: The input file does not contain color information.")
+            # You can choose to continue (writing only points) or raise an error.
+    
+        # Create a new point cloud with just the points and colors (if available)
+        new_pre_pcd_with_int = o3d.geometry.PointCloud()
+        new_pre_pcd_with_int.points = static_pre_pcd_with_interior.points
+        if static_pre_pcd_with_interior.has_colors():
+            new_pre_pcd_with_int.colors = static_pre_pcd_with_interior.colors
+
+        # Save the new point cloud to file
+        o3d.io.write_point_cloud(static_pre_pcd_with_interior_path, new_pre_pcd_with_int)
+        
+
+def create_ply_from_keyframe(keyframe, c_conf_threshold, filename):
+    # Optionally apply calibration if enabled.
+    if config["use_calib"]:
+        X_canon = constrain_points_to_ray(
+            keyframe.img_shape.flatten()[:2], keyframe.X_canon[None], keyframe.K
+        )
+        keyframe.X_canon = X_canon.squeeze(0)
+    
+    # Transform keyframe points to world coordinates.
+    pW = keyframe.T_WC.act(keyframe.X_canon).cpu().numpy().reshape(-1, 3)
+    color = (keyframe.uimg.cpu().numpy() * 255).astype(np.uint8).reshape(-1, 3)
+    
+    # Determine valid points based on the confidence threshold.
+    valid = keyframe.get_average_conf().cpu().numpy().astype(np.float32).reshape(-1) > 0 # c_conf_threshold
+    pW_valid = pW[valid]
+    color_valid = color[valid]
+    
+    # Combine the valid XYZ and RGB values into a structured array.
+    pcd = np.empty(len(pW_valid),
+                   dtype=[("x", "f4"), ("y", "f4"), ("z", "f4"),
+                          ("red", "u1"), ("green", "u1"), ("blue", "u1")])
+    pcd["x"], pcd["y"], pcd["z"] = pW_valid.T
+    pcd["red"], pcd["green"], pcd["blue"] = color_valid.T
+    
+    # Create a PlyElement and PlyData structure.
+    vertex_element = PlyElement.describe(pcd, "vertex")
+    ply_data = PlyData([vertex_element], text=False)
+    
+    ply_data.write(filename)
+    
+def apply_registration_transform(static_pcd, keyframes, last_msg, pre_static_pcd, pre_static_pcd_with_interior=None):
+    """
+    Saves the static point cloud and the first keyframe's point cloud to temporary PLY files,
+    calls the registration function, and then updates the static point cloud with the transformed
+    (registered) source point cloud.
+
+    Parameters:
+        static_pcd: An object with attributes 'path_to_ply', 'lock', and a method 'get_point_cloud()'.
+                    The point cloud data is expected to be a dict with a "points" key.
+        keyframes:  A list of keyframe objects; the first keyframe is used for registration.
+        last_msg:   An object containing the attribute 'C_conf_threshold' used for the keyframe PLY creation.
+
+    Returns:
+        The updated static_pcd object with its point cloud transformed.
+    """
+    import pathlib
+    import numpy as np
+
+    # Build the destination path for the keyframe PLY file.
+    dst_path = pathlib.Path(static_pcd.path_to_ply).parent / "keyframe0.ply"
+    
+    # Get the first keyframe.
+    f_keyframe = keyframes[0]
+    
+    # Create the keyframe PLY file using the confidence threshold.
+    create_ply_from_keyframe(f_keyframe, last_msg.C_conf_threshold, dst_path)
+    
+    # Call the registration function to obtain transformation matrices, scaling factors, and the registered source.
+    # Now the registration function returns:
+    # T1, T2, S1, S2, FT, registered_source
+    T1, T2, S1, S2, FT, registered_source, updated_static_pre_cloud, updated_pre_static_pcd_with_interior = register_SfM_SLAM(static_pcd.path_to_ply, dst_path, pre_static_pcd.path_to_ply, pre_static_pcd_with_interior)
+    
+    # Convert the registered source (an Open3D point cloud) to a NumPy array of points.
+    registered_points = np.asarray(registered_source.points)
+    updated_static_pre_cloud_points = np.asarray(updated_static_pre_cloud.points)
+    
+    if updated_pre_static_pcd_with_interior is not None:
+        registered_points_with_interior_points = np.asarray(updated_pre_static_pcd_with_interior.points)
+    
+    # Update the static_pcd's point cloud safely.
+    with static_pcd.lock:
+        static_pcd.point_cloud["points"] = registered_points
+        pre_static_pcd.point_cloud["points"] = updated_static_pre_cloud_points
+        if updated_pre_static_pcd_with_interior is not None:
+            pre_static_pcd_with_interior.point_cloud["points"] = registered_points_with_interior_points
+        else:
+            pre_static_pcd_with_interior = None
+    
+    return static_pcd, pre_static_pcd, pre_static_pcd_with_interior
 
 def relocalization(frame, keyframes, factor_graph, retrieval_database):
     # we are adding and then removing from the keyframe, so we need to be careful.
@@ -138,6 +301,16 @@ if __name__ == "__main__":
     device = "cuda:0"
     save_frames = False
     datetime_now = str(datetime.datetime.now()).replace(" ", "_")
+    repeat_reg = True
+    PRE_CLOUD_PATH = "/home/khanm2204/MASt3R-SLAM/pre_cloud/kyoto_CT.ply"
+    trans_pre_cloud = os.path.join(os.path.dirname(PRE_CLOUD_PATH), "kyoto_CT_transformed.ply")
+    trans_pre_cloud_refined = os.path.join(os.path.dirname(PRE_CLOUD_PATH), "kyoto_CT_reformed.ply")
+    trans_pre_cloud_with_interior = os.path.join(os.path.dirname(PRE_CLOUD_PATH), "kyoto_CT_with_interior.ply")
+    trans_pre_cloud_with_interior_0 = os.path.join(os.path.dirname(PRE_CLOUD_PATH), "kyoto_CT_with_interior_transformed.ply")
+    trans_pre_cloud_with_interior_1 = os.path.join(os.path.dirname(PRE_CLOUD_PATH), "kyoto_CT_with_interior_refined.ply")
+    curr_point_cloud = None
+    pre_static_pcd_with_interior = None
+    registration_loss = 0
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="datasets/tum/rgbd_dataset_freiburg1_desk")
@@ -174,11 +347,28 @@ if __name__ == "__main__":
 
     keyframes = SharedKeyframes(manager, h, w)
     states = SharedStates(manager, h, w)
+    static_pcd = SharedPointCloud("/home/khanm2204/MASt3R-SLAM/sfm_pts/points3D.ply")
+    _, _, _, _, _, static_pre_pcd, static_pre_pcd_with_interior = pre_intra_reg(static_pcd.path_to_ply, PRE_CLOUD_PATH, trans_pre_cloud_with_interior, 0.11, 0.009)    
+    save_transformed_pre_cloud(static_pre_pcd, trans_pre_cloud, static_pre_pcd_with_interior, trans_pre_cloud_with_interior_0)
+    
+    # load the transformed preoperative and static_pcd point cloud
+    
+    
+    static_pre_pcd, static_pre_pcd_with_interior = pre_intra_reg_refine(trans_pre_cloud, static_pcd.path_to_ply, 0.0, 0.05, trans_pre_cloud_with_interior_0) 
+    save_transformed_pre_cloud(static_pre_pcd, trans_pre_cloud_refined, static_pre_pcd_with_interior, trans_pre_cloud_with_interior_1)
+    
+    pre_static_pcd = SharedPointCloud(trans_pre_cloud_refined)
+    if static_pre_pcd_with_interior is not None:
+        pre_static_pcd_with_interior = SharedPointCloud(trans_pre_cloud_with_interior_1)
+    else:
+        pre_static_pcd_with_interior = None
+
+    last_msg = WindowMsg()
 
     if not args.no_viz:
         viz = mp.Process(
             target=run_visualization,
-            args=(config, states, keyframes, main2viz, viz2main),
+            args=(config, states, keyframes, main2viz, viz2main, static_pcd, pre_static_pcd, registration_loss, last_msg),
         )
         viz.start()
 
@@ -209,7 +399,7 @@ if __name__ == "__main__":
             recon_file.unlink()
 
     tracker = FrameTracker(model, keyframes, device)
-    last_msg = WindowMsg()
+    # last_msg = WindowMsg()
 
     factor_graph = FactorGraph(model, keyframes, K, device)
     retrieval_database = load_retriever(model)
@@ -279,6 +469,10 @@ if __name__ == "__main__":
         if add_new_kf:
             keyframes.append(frame)
             states.queue_global_optimization(len(keyframes) - 1)
+            
+            # Only when a new keyframe is added, compute the current point cloud.
+            curr_point_cloud = current_point_cloud(keyframes, last_msg.C_conf_threshold)
+            compute_registration_loss = True
 
         run_backend(states, keyframes)
 
@@ -287,6 +481,67 @@ if __name__ == "__main__":
             FPS = i / (time.time() - fps_timer)
             print(f"FPS: {FPS}")
         i += 1
+        
+        if repeat_reg:
+            # === BEGIN REGISTRATION CALL ===
+            # This block saves the static point cloud and the first keyframe's point cloud
+            # to temporary PLY files, then calls register_SfM_SLAM.
+    
+            static_pcd, pre_static_pcd, pre_static_pcd_with_interior = apply_registration_transform(static_pcd, keyframes, last_msg, pre_static_pcd, pre_static_pcd_with_interior)
+            
+            if pre_static_pcd_with_interior is None:
+                # Create a payload with the updated static point cloud data:
+                updated_data = {
+                    "points": static_pcd.point_cloud["points"],
+                    "colors": static_pcd.point_cloud["colors"],
+                }
+                # Send a tuple that includes both the command and the new data.
+                main2viz.put(("update_static", updated_data))
+            
+                updated_pre = {
+                    "points": pre_static_pcd.point_cloud["points"],
+                    # Optionally include colors if available:
+                    "colors": pre_static_pcd.point_cloud.get("colors", None)
+                }
+                main2viz.put(("update_pre_static", updated_pre))
+            
+                pre_points = pre_static_pcd.point_cloud["points"]  # pre_static_pcd is updated in the registration block.
+                kdtree = cKDTree(pre_points)
+            else:
+                # Create a payload with the updated static point cloud data:
+                updated_data = {
+                    "points": static_pcd.point_cloud["points"],
+                    "colors": static_pcd.point_cloud["colors"],
+                }
+                # Send a tuple that includes both the command and the new data.
+                main2viz.put(("update_static", updated_data))
+            
+                updated_pre = {
+                    "points": pre_static_pcd_with_interior.point_cloud["points"],
+                    # Optionally include colors if available:
+                    "colors": pre_static_pcd_with_interior.point_cloud.get("colors", None)
+                }
+                main2viz.put(("update_pre_static", updated_pre))
+            
+                pre_points = pre_static_pcd.point_cloud["points"]  # pre_static_pcd is updated in the registration block.
+                kdtree = cKDTree(pre_points)
+                
+            
+            repeat_reg = False
+
+            # === END REGISTRATION CALL ===
+            
+        if (curr_point_cloud is not None) and (compute_registration_loss):
+            vertices = curr_point_cloud["vertex"].data
+            curr_points = np.column_stack((vertices["x"], vertices["y"], vertices["z"]))
+            # Query the KDTree for the nearest neighbor distances.
+            distances, _ = kdtree.query(curr_points, k=1)
+            
+            # Compute the registration loss metric as the mean squared distance.
+            registration_loss = np.mean(distances**2)
+            # Send the updated loss to the visualization process.
+            main2viz.put(("update_registration_loss", registration_loss))
+            compute_registration_loss = False
 
     if dataset.save_results:
         save_dir, seq_name = eval.prepare_savedir(args, dataset)
