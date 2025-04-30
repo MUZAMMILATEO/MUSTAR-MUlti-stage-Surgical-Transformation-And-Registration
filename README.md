@@ -117,21 +117,27 @@ When prompted, provide the absolute path to your folder containing RGB images.
 
 ## 4. Folder Structure Overview
 ```
-MASt3R-SLAM/
-├── SfM-SLAM/
+Home/
+├── MUSTAR/
 │   ├── pre_cloud/
 │   │   ├── Kyoto_CT.ply
 │   │   └── Kyoto_CT_with_interior.ply
 │   └── sfm_pts/
 │       ├── points3D.ply
 │       └── keyframe0.ply (after running main.py)
-├── config/
-│   └── base.yaml
-├── datasets/
-│   └── tum/
-│       └── rgbd_dataset/
-└── extra_tools/
-    └── txt_gen.py
+|   ├── config/
+│       └── base.yaml
+|   ├── datasets/
+│       └── tum/
+│           └── rgbd_dataset/
+|               ├── rgb/
+|               └── rgb.txt
+|   ├── extra_tools/
+|       └── txt_gen.py
+|   ├── checkpoints/
+|       ├── MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth
+|       ├── MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_codebook.pkl
+|       └── MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_trainingfree.pth
 ```
 
 ## 🚀 Running the SLAM Framework
