@@ -221,7 +221,7 @@ We run all our experiments on an RTX 4090, and the performance may differ when r
 ## Acknowledgement
 We sincerely thank the developers and contributors of the many open-source projects that our code is built upon.
 - [MASt3R](https://github.com/naver/mast3r)
-- [MASt3R-SfM](https://github.com/naver/mast3r/tree/mast3r_sfm)
+- [MASt3R-SLAM](https://github.com/rmurai0610/MASt3R-SLAM)
 - [DROID-SLAM](https://github.com/princeton-vl/DROID-SLAM)
 - [ModernGL](https://github.com/moderngl/moderngl)
 
