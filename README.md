@@ -3,7 +3,7 @@
 This repository provides the MUSTAR framework designed for surgical environments. It integrates Structure-from-Motion (SfM), pose estimation, and registration techniques to align pre-operative and intra-operative data.
 
 <p align="center">
-  <img src="extra_tools/mustar_demo.gif" alt="Demo" width="600"/>
+  <img src="extra_tools/poster.gif" alt="Demo" width="600"/>
 </p>
 
 
