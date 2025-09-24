@@ -169,51 +169,6 @@ python main.py --dataset <path/to/video>.mp4 --config config/base.yaml --calib c
 python main.py --dataset <path/to/folder> --config config/base.yaml --calib config/intrinsics.yaml
 ```
 
-## Downloading Dataset
-### TUM-RGBD Dataset
-```
-bash ./scripts/download_tum.sh
-```
-
-### 7-Scenes Dataset
-```
-bash ./scripts/download_7_scenes.sh
-```
-
-### EuRoC Dataset
-```
-bash ./scripts/download_euroc.sh
-```
-### ETH3D SLAM Dataset
-```
-bash ./scripts/download_eth3d.sh
-```
-
-## Running Evaluations
-All evaluation script will run our system in a single-threaded, headless mode.
-We can run evaluations with/without calibration:
-### TUM-RGBD Dataset
-```
-bash ./scripts/eval_tum.sh 
-bash ./scripts/eval_tum.sh --no-calib
-```
-
-### 7-Scenes Dataset
-```
-bash ./scripts/eval_7_scenes.sh 
-bash ./scripts/eval_7_scenes.sh --no-calib
-```
-
-### EuRoC Dataset
-```
-bash ./scripts/eval_euroc.sh 
-bash ./scripts/eval_euroc.sh --no-calib
-```
-### ETH3D SLAM Dataset
-```
-bash ./scripts/eval_eth3d.sh 
-```
-
 ## Reproducibility
 There might be minor differences between the released version and the results in the paper after developing this multi-processing version. 
 We run all our experiments on an RTX 4090, and the performance may differ when running with a different GPU.
