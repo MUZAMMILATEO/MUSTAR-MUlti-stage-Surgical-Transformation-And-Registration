@@ -6,7 +6,7 @@ This repository provides the MUSTAR framework designed for surgical environments
 
 
 # Getting Started
-## Installation
+## 💻 Installation 
 ```
 conda create -n mast3r-slam python=3.11
 conda activate mast3r-slam
@@ -50,7 +50,7 @@ wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge
 wget https://download.europe.naverlabs.com/ComputerVision/MASt3R/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric_retrieval_codebook.pkl -P checkpoints/
 ```
 
-## WSL Users
+## 🐧 WSL Users 
 We have primarily tested on Ubuntu.  If you are using WSL, please checkout to the windows branch and follow the above installation.
 ```
 git checkout windows
@@ -91,7 +91,7 @@ pip install teaserpp_python
 
 Run the following in your WSL terminal:
 
-## Data Preparation
+## 🗂️ Data Preparation
 
 ### 1. Pre-operative Point Cloud
 
@@ -154,12 +154,12 @@ python main.py --dataset /path/to/your/rgbd_dataset/ --config config/base.yaml
 
 
 
-## Live Demo
+## 🎥 Live Demo
 Connect a realsense camera to the PC and run
 ```
 python main.py --dataset realsense --config config/base.yaml
 ```
-## Running on a video
+## ▶️ Running on a video
 Our system can process either MP4 videos or folders containing RGB images.
 ```
 python main.py --dataset <path/to/video>.mp4 --config config/base.yaml
@@ -171,7 +171,7 @@ python main.py --dataset <path/to/video>.mp4 --config config/base.yaml --calib c
 python main.py --dataset <path/to/folder> --config config/base.yaml --calib config/intrinsics.yaml
 ```
 
-## Reproducibility
+## 🔁 Reproducibility
 There might be minor differences between the released version and the results in the paper after developing this multi-processing version. 
 We run all our experiments on an RTX 4090, and the performance may differ when running with a different GPU.
 
